@@ -6,19 +6,15 @@ Built on Cloudflare Workers + Bunny.net Stream.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/leobbortoluzzi/vsl-player)
 
-## Quick start
+## Setup
 
-1. Click **Deploy to Cloudflare Workers** above
-2. Authorize Cloudflare to access your GitHub account
-3. After deploy, go to your Worker **Settings → Variables** and add:
-
-| Binding | Name | Value |
-|---------|------|-------|
-| KV Namespace | `VSL_KV` | Create one in **KV** tab first |
-| Secret | `BUNNY_LIBRARY_ID` | Your Bunny Stream Library ID |
-| Secret | `BUNNY_API_KEY` | Your Bunny Stream API key |
-
-4. Your admin panel is live at your `workers.dev` URL — set your password on first access
+1. Click the **Deploy to Cloudflare Workers** button above
+2. Authorize Cloudflare and fill in:
+   - **BUNNY_LIBRARY_ID** — your Bunny Stream Library ID
+   - **BUNNY_API_KEY** — your Bunny Stream API key
+   - **VSL_KV** — will be auto-created or select existing
+3. Deploy — your admin panel is live at your `workers.dev` URL
+4. First access: set your admin password on the setup screen
 
 ## Player embed
 
@@ -27,7 +23,7 @@ Built on Cloudflare Workers + Bunny.net Stream.
         style="width:100%; aspect-ratio:16/9; border:none;"></iframe>
 ```
 
-### CTA delay (pitch at 30 min)
+### CTA delay (e.g. pitch at 30 min)
 
 ```js
 window.addEventListener('message', (e) => {

@@ -34,8 +34,8 @@ There is no build command, no bundler, no test suite. The Worker is deployed as 
 
 1. Worker code lives on GitHub
 2. Cloudflare Dashboard reads the repo and auto-deploys on push
-3. `wrangler.jsonc` is **minimal** — only build config (`name`, `main`, `compatibility_date`, `compatibility_flags`)
-4. **KV bindings and env vars are NOT in `wrangler.jsonc`** — they are configured in the Cloudflare Dashboard UI under Settings → Variables
+3. `wrangler.jsonc` declares all bindings and env vars so the **Deploy to Cloudflare** button auto-detects them
+4. KV bindings and env vars can also be managed in the Cloudflare Dashboard UI under Settings → Variables
 
 ## Required dashboard configuration
 
