@@ -4,9 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "node scripts/setup.mjs",
-    "deploy:only": "wrangler deploy"
+    "dev": "wrangler dev"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250420.0",
