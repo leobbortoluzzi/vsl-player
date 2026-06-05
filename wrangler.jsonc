@@ -6,11 +6,11 @@
   "kv_namespaces": [
     {
       "binding": "VSL_KV",
-      "id": "{{SEU_KV_NAMESPACE_ID}}"
+      "id": "{{KV_ID}}"
     }
   ],
   "vars": {
-    "BUNNY_LIBRARY_ID": "676737",
+    "BUNNY_LIBRARY_ID": "SEU_BUNNY_LIBRARY_ID",
     "BUNNY_API_KEY": "SUA_BUNNY_API_KEY"
   }
 }
