@@ -9,6 +9,13 @@
       "id": "{{ VSL_KV }}"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "VSL_DB",
+      "database_name": "vsl-player-db",
+      "database_id": "{{ VSL_DB }}"
+    }
+  ],
   "vars": {
     "BUNNY_LIBRARY_ID": "YOUR_BUNNY_LIBRARY_ID",
     "BUNNY_API_KEY": "YOUR_BUNNY_API_KEY"

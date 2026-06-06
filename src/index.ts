@@ -10,6 +10,7 @@ import {
   requireAuth,
 } from './auth';
 import { createVideo, getVideo, deleteVideo, getPlayUrl, getThumbnailUrl, isVideoReady } from './bunny';
+import { trackAnalytics, getAnalytics } from './db';
 import { playerPage } from './player';
 import { adminPage } from './admin';
 import { loginPage } from './login';
@@ -17,6 +18,7 @@ import { embedScript } from './embed';
 
 export interface Env {
   VSL_KV: KVNamespace;
+  VSL_DB: D1Database;
   BUNNY_LIBRARY_ID: string;
   BUNNY_API_KEY: string;
 }
@@ -337,14 +339,6 @@ interface AnalyticsPayload {
   videoLength: number;
 }
 
-interface VideoAnalytics {
-  totalSessions: number;
-  totalWatchSeconds: number;
-  totalDurationAvailable: number;
-  heatmap: Record<number, number>;
-  updatedAt: string;
-}
-
 async function handleAnalyticsTrack(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
   let payload: AnalyticsPayload;
   try {
@@ -357,61 +351,10 @@ async function handleAnalyticsTrack(req: Request, env: Env, _match: RegExpMatchA
     return errorJson('Missing fields');
   }
 
-  // Read existing analytics
-  const raw = await env.VSL_KV.get(`analytics:${payload.videoId}`);
-  let analytics: VideoAnalytics;
-  if (raw) {
-    try {
-      analytics = JSON.parse(raw);
-    } catch {
-      analytics = emptyAnalytics();
-    }
-  } else {
-    analytics = emptyAnalytics();
-  }
-
-  // Calculate watch time from segments
-  let watchSeconds = 0;
-  let maxTime = 0;
-  for (const seg of payload.segments) {
-    if (seg.length === 2) {
-      const dur = seg[1] - seg[0];
-      if (dur > 0) watchSeconds += dur;
-      if (seg[1] > maxTime) maxTime = seg[1];
-    }
-  }
-
-  analytics.totalSessions++;
-  analytics.totalWatchSeconds += watchSeconds;
-  analytics.totalDurationAvailable += payload.videoLength || maxTime || watchSeconds;
-  analytics.updatedAt = new Date().toISOString();
-
-  // Update heatmap (5-second buckets)
-  for (const seg of payload.segments) {
-    if (seg.length !== 2) continue;
-    const startBucket = Math.floor(seg[0] / 5);
-    const endBucket = Math.floor(seg[1] / 5);
-    for (let b = startBucket; b <= endBucket; b++) {
-      analytics.heatmap[b] = (analytics.heatmap[b] || 0) + 1;
-    }
-  }
-
-  // Trim heatmap to prevent KV bloat
-  const keys = Object.keys(analytics.heatmap).map(Number);
-  if (keys.length > 2000) {
-    const sorted = keys.sort((a, b) => a - b);
-    const cutoff = sorted[2000];
-    const trimmed: Record<number, number> = {};
-    for (const k of sorted) {
-      if (k <= cutoff) trimmed[k] = analytics.heatmap[k];
-    }
-    analytics.heatmap = trimmed;
-  }
-
   try {
-    await env.VSL_KV.put(`analytics:${payload.videoId}`, JSON.stringify(analytics));
+    await trackAnalytics(env.VSL_DB, payload.videoId, payload.segments, payload.videoLength);
   } catch (err) {
-    console.error('Failed to write analytics:', err);
+    console.error('Analytics write error:', err);
   }
 
   return json({ success: true });
@@ -419,21 +362,8 @@ async function handleAnalyticsTrack(req: Request, env: Env, _match: RegExpMatchA
 
 async function handleAnalyticsGet(_req: Request, env: Env, match: RegExpMatchArray): Promise<Response> {
   const videoId = match[1];
-  const raw = await env.VSL_KV.get(`analytics:${videoId}`);
-  if (!raw) {
-    return json({ totalSessions: 0, totalWatchSeconds: 0, totalDurationAvailable: 0, heatmap: {} });
-  }
-  return json(JSON.parse(raw));
-}
-
-function emptyAnalytics(): VideoAnalytics {
-  return {
-    totalSessions: 0,
-    totalWatchSeconds: 0,
-    totalDurationAvailable: 0,
-    heatmap: {},
-    updatedAt: '',
-  };
+  const data = await getAnalytics(env.VSL_DB, videoId);
+  return json(data);
 }
 
 // ─── HTML helpers ──────────────────────────────────────────
