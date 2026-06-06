@@ -292,9 +292,9 @@ export function adminPage(): string {
       var scriptTag = '<script src="' + embedUrl + '.js" async><\\/script>';
       showMessage('success',
         '<div class="embed-label">Script (recomendado)</div>' +
-        '<div class="embed-block" onclick="copyText(\\'' + escAttr(scriptTag) + '\\')">' + escHtml(scriptTag) + '</div>' +
+        '<div class="embed-block" data-copy="' + escHtml(scriptTag) + '">' + escHtml(scriptTag) + '</div>' +
         '<div class="embed-label" style="margin-top:8px">Iframe</div>' +
-        '<div class="embed-block" onclick="copyText(\\'' + escAttr(embedUrl) + '\\')">' + escHtml(embedUrl) + '</div>'
+        '<div class="embed-block" data-copy="' + escHtml(embedUrl) + '">' + escHtml(embedUrl) + '</div>'
       );
       progressText.textContent = 'Concluído!';
       resetUploadUI();
@@ -348,8 +348,8 @@ export function adminPage(): string {
               '<div class="meta">' + date + ' · ' + duration + ' · <span class="status-badge ' + statusClass + '">' + statusLabel + '</span></div>' +
             '</div>' +
             '<div class="actions">' +
-              '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(scriptTag) + '\\')">Script</button>' +
-              '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(embedUrl) + '\\')">Iframe</button>' +
+              '<button class="btn btn-copy" data-copy="' + escHtml(scriptTag) + '">Script</button>' +
+              '<button class="btn btn-copy" data-copy="' + escHtml(embedUrl) + '">Iframe</button>' +
               '<button class="btn btn-copy" onclick="showAnalytics(\\'' + v.id + '\\')">Analytics</button>' +
               '<button class="btn btn-danger" onclick="delVideo(\\'' + v.id + '\\')">Remover</button>' +
             '</div>' +
@@ -361,7 +361,13 @@ export function adminPage(): string {
       });
   }
 
-  window.copyText = copyToClipboard;
+  // --- Copy to clipboard (delegated) ---
+  document.addEventListener('click', function(e) {
+    var el = e.target.closest('[data-copy]');
+    if (!el) return;
+    copyToClipboard(el.getAttribute('data-copy'));
+  });
+
   window.delVideo = deleteVideo;
 
   // --- Analytics ---
@@ -439,7 +445,6 @@ export function adminPage(): string {
 
 function formatTime(s) { var m = Math.floor(s/60); var sec = Math.floor(s%60); return m + ':' + (sec<10?'0'+sec:sec); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escAttr(s) { return (s||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,'\\\\\\''); }
 </script>
 </body>
 </html>`;

@@ -36,6 +36,7 @@ export function embedScript(data: EmbedData): string {
   var video = document.createElement('video');
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
+  video.muted = true;
   video.style.cssText = 'width:100%;height:100%;object-fit:contain;outline:none;';
   video.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 

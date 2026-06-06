@@ -34,7 +34,7 @@ export function playerPage(data: PlayerData): string {
   <div class="poster${thumbnailUrl ? '' : ' hidden'}" id="poster"${thumbnailUrl ? ` style="background-image:url(${escapeAttr(thumbnailUrl)})"` : ''}>
     <div class="play-btn" id="playBtn"></div>
   </div>
-  <video id="videoEl" playsinline webkit-playsinline x5-video-player-type="h5" x5-video-orientation="portraint"></video>
+  <video id="videoEl" muted playsinline webkit-playsinline x5-video-player-type="h5" x5-video-orientation="portraint"></video>
   <div class="loader" id="loader"></div>
 </div>
 
@@ -121,7 +121,6 @@ export function playerPage(data: PlayerData): string {
       hls.loadSource(playUrl);
       hls.attachMedia(video);
       hls.on(HlsCtor.Events.MANIFEST_PARSED, function() {
-        video.muted = true;
         setupListeners();
         video.play().catch(function() {});
       });
@@ -141,7 +140,6 @@ export function playerPage(data: PlayerData): string {
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = playUrl;
-      video.muted = true;
       video.addEventListener('loadedmetadata', function() {
         setupListeners();
         video.play().catch(function() {});
