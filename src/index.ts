@@ -9,10 +9,11 @@ import {
   clearSessionCookie,
   requireAuth,
 } from './auth';
-import { createVideo, getVideo, deleteVideo } from './bunny';
+import { createVideo, getVideo, deleteVideo, getPlayUrl, getThumbnailUrl, isVideoReady } from './bunny';
 import { playerPage } from './player';
 import { adminPage } from './admin';
 import { loginPage } from './login';
+import { embedScript } from './embed';
 
 export interface Env {
   VSL_KV: KVNamespace;
@@ -48,6 +49,12 @@ function html(body: string, extraHeaders: Record<string, string> = {}): Response
   });
 }
 
+function js(code: string): Response {
+  return new Response(code, {
+    headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', ...corsHeaders() },
+  });
+}
+
 function redirect(url: string, extraHeaders: Record<string, string> = {}): Response {
   return new Response(null, { status: 302, headers: { Location: url, ...extraHeaders } });
 }
@@ -66,6 +73,7 @@ interface Route {
 const routes: Route[] = [
   // Public
   { method: 'GET',  pattern: /^\/login\/?$/,             handler: handleLoginPage,   authRequired: false },
+  { method: 'GET',  pattern: /^\/embed\/([a-zA-Z0-9-]+)\.js\/?$/, handler: handleEmbedJs, authRequired: false },
   { method: 'GET',  pattern: /^\/embed\/([a-zA-Z0-9-]+)$/, handler: handlePlayer,    authRequired: false },
   { method: 'GET',  pattern: /^\/api\/auth\/status\/?$/,    handler: handleAuthStatus,  authRequired: false },
   { method: 'POST', pattern: /^\/api\/auth\/setup\/?$/,     handler: handleAuthSetup,   authRequired: false },
@@ -98,7 +106,6 @@ export default {
       if (route.authRequired) {
         const authed = await requireAuth(request, env.VSL_KV);
         if (!authed) {
-          // For page requests, redirect to login. For API, return 401.
           if (route.method === 'GET' && !pathname.startsWith('/api/')) {
             return redirect('/login');
           }
@@ -187,19 +194,46 @@ async function handlePlayer(_req: Request, env: Env, match: RegExpMatchArray): P
   try {
     const video = await getVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, stored.bunnyGuid);
 
-    if (video.status !== 1) {
+    if (!isVideoReady(video.status)) {
       return html(processingHtml(stored.title, video.status));
     }
 
     return html(playerPage({
       title: video.title || stored.title,
-      hlsUrl: video.playlistUrl,
-      thumbnailUrl: video.thumbnailUrl,
+      playUrl: getPlayUrl(env.BUNNY_LIBRARY_ID, stored.bunnyGuid),
+      thumbnailUrl: video.thumbnailFileName
+        ? getThumbnailUrl(env.BUNNY_LIBRARY_ID, stored.bunnyGuid)
+        : '',
     }));
   } catch (err) {
     console.error('Player error:', err);
     return html(processingHtml(stored.title, -1));
   }
+}
+
+async function handleEmbedJs(_req: Request, env: Env, match: RegExpMatchArray): Promise<Response> {
+  const videoId = match[1];
+  const stored = await env.VSL_KV.get<StoredVideo>(`video:${videoId}`, 'json');
+
+  if (!stored) {
+    return js(`console.error('VSL Player: vídeo não encontrado (${videoId})');`);
+  }
+
+  try {
+    const video = await getVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, stored.bunnyGuid);
+
+    if (!isVideoReady(video.status)) {
+      return js(`console.warn('VSL Player: vídeo ainda processando (status ${video.status}), recarregue a página em alguns segundos.');`);
+    }
+  } catch {
+    return js(`console.warn('VSL Player: não foi possível verificar status do vídeo, tentando reproduzir assim mesmo.');`);
+  }
+
+  return js(embedScript({
+    title: stored.title,
+    libraryId: env.BUNNY_LIBRARY_ID,
+    bunnyGuid: stored.bunnyGuid,
+  }));
 }
 
 // ─── Video API handlers ────────────────────────────────────
@@ -313,7 +347,7 @@ function processingHtml(title: string, status: number): string {
 <html lang="pt">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title)} - Processando</title>
-${status > 0 ? '<meta http-equiv="refresh" content="5">' : ''}
+${status >= 0 ? '<meta http-equiv="refresh" content="5">' : ''}
 <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}.box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:32px 48px}h1{color:#f0f6fc;font-size:20px;margin-bottom:8px}p{color:#8b949e;font-size:14px}.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.15);border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;margin:16px auto}@keyframes spin{to{transform:rotate(360deg)}}</style>
 </head>
 <body>

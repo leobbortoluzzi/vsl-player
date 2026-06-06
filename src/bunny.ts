@@ -3,10 +3,14 @@ export interface BunnyVideo {
   title: string;
   status: number;
   length: number;
-  thumbnailUrl: string;
-  playlistUrl: string;
-  videoPlayerUrl: string;
+  thumbnailFileName: string | null;
+  thumbnailCount: number;
+  encodeProgress: number;
+  width: number;
+  height: number;
   storageSize: number;
+  availableResolutions: string | null;
+  hasMP4Fallback: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +19,18 @@ export interface BunnyCreateResponse {
   guid: string;
   title: string;
   status: number;
+}
+
+export function isVideoReady(status: number): boolean {
+  return status >= 4;
+}
+
+export function getPlayUrl(libraryId: string, guid: string): string {
+  return `https://video.bunnycdn.com/play/${libraryId}/${guid}`;
+}
+
+export function getThumbnailUrl(libraryId: string, guid: string): string {
+  return `https://video.bunnycdn.com/play/${libraryId}/${guid}/thumbnail.jpg`;
 }
 
 function bunnyUrl(libraryId: string, path: string): string {

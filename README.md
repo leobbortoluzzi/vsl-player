@@ -16,18 +16,30 @@ Built on Cloudflare Workers + Bunny.net Stream.
 3. Deploy — your admin panel is live at your `workers.dev` URL
 4. First access: set your admin password on the setup screen
 
-## Player embed
+## Embed
+
+### Script (recomendado — tipo VTurb/PandaVideo)
+
+```html
+<script src="https://your-worker.workers.dev/embed/VIDEO_ID.js" async></script>
+```
+
+O script injeta o player inline, eventos disparados direto no `document`. Sem barreiras cross-origin.
+
+### Iframe
 
 ```html
 <iframe src="https://your-worker.workers.dev/embed/VIDEO_ID"
         style="width:100%; aspect-ratio:16/9; border:none;"></iframe>
 ```
 
-### CTA delay (e.g. pitch at 30 min)
+Eventos via `postMessage`.
+
+### CTA delay (pitch at 30 min)
 
 ```js
-window.addEventListener('message', (e) => {
-  if (e.data.type === 'player:timeupdate' && e.data.detail.time >= 1800) {
+document.addEventListener('player:timeupdate', function(e) {
+  if (e.detail.time >= 30 * 60) {
     document.getElementById('cta-button').style.display = 'block';
   }
 });

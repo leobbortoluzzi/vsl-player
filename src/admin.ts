@@ -55,6 +55,10 @@ export function adminPage(): string {
   .message.success { display: block; background: rgba(35,134,54,.15); color: #3fb950; border: 1px solid rgba(63,185,80,.4); }
   .message.error { display: block; background: rgba(248,81,73,.15); color: #f85149; border: 1px solid rgba(248,81,73,.4); }
   .message .embed-link { display: block; margin-top: 6px; word-break: break-all; color: #58a6ff; }
+  .message .embed-block { margin-top: 8px; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; font-family: monospace; font-size: 12px; color: #c9d1d9; word-break: break-all; cursor: pointer; transition: border-color .15s; }
+  .message .embed-block:hover { border-color: #58a6ff; }
+  .message .embed-label { font-size: 11px; color: #8b949e; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+
 
   .videos-section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; }
   .videos-section h2 { font-size: 16px; font-weight: 600; color: #f0f6fc; margin-bottom: 16px; }
@@ -263,7 +267,13 @@ export function adminPage(): string {
     })
     .then(function(confirmData) {
       var embedUrl = location.origin + '/embed/' + confirmData.id;
-      showMessage('success', 'Vídeo enviado!<span class="embed-link">' + embedUrl + '</span>');
+      var scriptTag = '<script src="' + embedUrl + '.js" async><\\/script>';
+      showMessage('success',
+        '<div class="embed-label">Script (recomendado)</div>' +
+        '<div class="embed-block" onclick="copyText(\\'' + escAttr(scriptTag) + '\\')">' + escHtml(scriptTag) + '</div>' +
+        '<div class="embed-label" style="margin-top:8px">Iframe</div>' +
+        '<div class="embed-block" onclick="copyText(\\'' + escAttr(embedUrl) + '\\')">' + escHtml(embedUrl) + '</div>'
+      );
       progressText.textContent = 'Concluído!';
       resetUploadUI();
       loadVideos();
@@ -304,7 +314,8 @@ export function adminPage(): string {
         }
         videoList.innerHTML = videos.map(function(v) {
           var embedUrl = location.origin + '/embed/' + v.id;
-          var isReady = v.status === 1;
+          var scriptTag = '<script src="' + embedUrl + '.js" async><\\/script>';
+          var isReady = v.status >= 4;
           var statusLabel = isReady ? 'Pronto' : 'Processando';
           var statusClass = isReady ? 'ready' : 'processing';
           var duration = v.length ? formatTime(v.length) : '--';
@@ -315,7 +326,8 @@ export function adminPage(): string {
               '<div class="meta">' + date + ' · ' + duration + ' · <span class="status-badge ' + statusClass + '">' + statusLabel + '</span></div>' +
             '</div>' +
             '<div class="actions">' +
-              '<button class="btn btn-copy" onclick="copyUrl(\\'' + escAttr(embedUrl) + '\\')">Copiar link</button>' +
+              '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(scriptTag) + '\\')">Script</button>' +
+              '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(embedUrl) + '\\')">Iframe</button>' +
               '<button class="btn btn-danger" onclick="delVideo(\\'' + v.id + '\\')">Remover</button>' +
             '</div>' +
           '</div>';
@@ -326,7 +338,7 @@ export function adminPage(): string {
       });
   }
 
-  window.copyUrl = copyToClipboard;
+  window.copyText = copyToClipboard;
   window.delVideo = deleteVideo;
 
   // Start

@@ -1,11 +1,11 @@
 export interface PlayerData {
   title: string;
-  hlsUrl: string;
+  playUrl: string;
   thumbnailUrl: string;
 }
 
 export function playerPage(data: PlayerData): string {
-  const { title, hlsUrl, thumbnailUrl } = data;
+  const { title, playUrl, thumbnailUrl } = data;
 
   return `<!DOCTYPE html>
 <html lang="pt">
@@ -44,7 +44,7 @@ export function playerPage(data: PlayerData): string {
   var poster = document.getElementById('poster');
   var playBtn = document.getElementById('playBtn');
   var loader = document.getElementById('loader');
-  var hlsUrl = ${JSON.stringify(hlsUrl)};
+  var playUrl = ${JSON.stringify(playUrl)};
   var HlsCtor = window.Hls;
 
   function emit(name, detail) {
@@ -82,7 +82,7 @@ export function playerPage(data: PlayerData): string {
         startLevel: -1,
         autoStartLoad: true
       });
-      hls.loadSource(hlsUrl);
+      hls.loadSource(playUrl);
       hls.attachMedia(video);
       hls.on(HlsCtor.Events.MANIFEST_PARSED, function() {
         video.muted = true;
@@ -104,7 +104,7 @@ export function playerPage(data: PlayerData): string {
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsUrl;
+      video.src = playUrl;
       video.muted = true;
       video.addEventListener('loadedmetadata', function() {
         setupListeners();
