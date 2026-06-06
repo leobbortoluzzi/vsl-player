@@ -84,18 +84,28 @@ export function playerPage(data: PlayerData): string {
 
   function trackPause() { pushSegment(); }
 
+  function deliverAnalytics(payload) {
+    if (navigator.sendBeacon && navigator.sendBeacon('/api/analytics/track', payload)) {
+      return;
+    }
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(function() {});
+  }
+
   function sendAnalytics() {
+    pushSegment();
     if (analytics.sent || analytics.segments.length === 0) return;
     analytics.sent = true;
-    pushSegment();
     var payload = JSON.stringify({
       videoId: analytics.videoId,
       segments: analytics.segments,
       videoLength: analytics.videoLength
     });
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/analytics/track', payload);
-    }
+    deliverAnalytics(payload);
   }
 
   function setupListeners() {
@@ -106,6 +116,12 @@ export function playerPage(data: PlayerData): string {
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('contextmenu', function(e) { e.preventDefault(); });
     window.addEventListener('beforeunload', sendAnalytics);
+    window.addEventListener('pagehide', sendAnalytics);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') {
+        sendAnalytics();
+      }
+    });
     hideLoader();
     onReady();
   }

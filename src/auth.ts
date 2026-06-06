@@ -70,12 +70,14 @@ export function getSessionFromCookie(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-export function makeSessionCookie(token: string, maxAge = 86400): string {
-  return `vsl_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+export function makeSessionCookie(token: string, secure = true, maxAge = 86400): string {
+  const secureFlag = secure ? '; Secure' : '';
+  return `vsl_session=${token}; HttpOnly${secureFlag}; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
 
-export function clearSessionCookie(): string {
-  return `vsl_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
+export function clearSessionCookie(secure = true): string {
+  const secureFlag = secure ? '; Secure' : '';
+  return `vsl_session=; HttpOnly${secureFlag}; SameSite=Strict; Path=/; Max-Age=0`;
 }
 
 export async function requireAuth(request: Request, kv: KVNamespace): Promise<boolean> {

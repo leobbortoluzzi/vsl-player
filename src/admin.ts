@@ -281,7 +281,7 @@ export function adminPage(): string {
       return fetch('/api/videos/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: createData.videoId, bunnyGuid: createData.bunnyGuid })
+        body: JSON.stringify({ id: createData.videoId, bunnyGuid: createData.bunnyGuid, title: title })
       }).then(function(r) {
         if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Erro ao confirmar'); });
         return r.json();
@@ -301,7 +301,7 @@ export function adminPage(): string {
       loadVideos();
     })
     .catch(function(err) {
-      showMessage('error', err.message);
+      showMessage('error', escHtml(err.message));
       progressText.textContent = 'Falha no upload';
       uploadBtn.disabled = !selectedFile || !titleInput.value.trim();
     });

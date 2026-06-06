@@ -96,18 +96,28 @@ export function embedScript(data: EmbedData): string {
 
   function trackPause() { pushSegment(); }
 
+  function deliverAnalytics(payload) {
+    if (navigator.sendBeacon && navigator.sendBeacon('/api/analytics/track', payload)) {
+      return;
+    }
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(function() {});
+  }
+
   function sendAnalytics() {
+    pushSegment();
     if (analytics.sent || analytics.segments.length === 0) return;
     analytics.sent = true;
-    pushSegment();
     var payload = JSON.stringify({
       videoId: analytics.videoId,
       segments: analytics.segments,
       videoLength: analytics.videoLength
     });
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/analytics/track', payload);
-    }
+    deliverAnalytics(payload);
   }
 
   video.addEventListener('play', function() { trackPlay(); emit('player:play', {}); hidePoster(); });
@@ -116,6 +126,12 @@ export function embedScript(data: EmbedData): string {
   video.addEventListener('ended', function() { trackPause(); sendAnalytics(); emit('player:ended', {}); });
   video.addEventListener('timeupdate', function() { emit('player:timeupdate', { time: video.currentTime }); });
   window.addEventListener('beforeunload', sendAnalytics);
+  window.addEventListener('pagehide', sendAnalytics);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      sendAnalytics();
+    }
+  });
   // ────────────────────────────────────────────
 
   playBtn.addEventListener('click', function(e) { e.stopPropagation(); video.play().catch(function(){}); });

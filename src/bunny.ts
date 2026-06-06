@@ -26,15 +26,15 @@ export function isVideoReady(status: number): boolean {
 }
 
 export function getPlayUrl(libraryId: string, guid: string): string {
-  return `https://video.bunnycdn.com/play/${libraryId}/${guid}`;
+  return `https://video.bunnycdn.com/play/${encodeURIComponent(libraryId)}/${encodeURIComponent(guid)}`;
 }
 
 export function getThumbnailUrl(libraryId: string, guid: string): string {
-  return `https://video.bunnycdn.com/play/${libraryId}/${guid}/thumbnail.jpg`;
+  return `https://video.bunnycdn.com/play/${encodeURIComponent(libraryId)}/${encodeURIComponent(guid)}/thumbnail.jpg`;
 }
 
 function bunnyUrl(libraryId: string, path: string): string {
-  return `https://video.bunnycdn.com/library/${libraryId}${path}`;
+  return `https://video.bunnycdn.com/library/${encodeURIComponent(libraryId)}${path}`;
 }
 
 function bunnyHeaders(apiKey: string): Record<string, string> {
@@ -67,7 +67,7 @@ export async function uploadVideo(
   guid: string,
   buffer: ArrayBuffer,
 ): Promise<void> {
-  const res = await fetch(bunnyUrl(libraryId, `/videos/${guid}`), {
+  const res = await fetch(bunnyUrl(libraryId, `/videos/${encodeURIComponent(guid)}`), {
     method: 'PUT',
     headers: { AccessKey: apiKey },
     body: buffer,
@@ -83,7 +83,7 @@ export async function getVideo(
   apiKey: string,
   guid: string,
 ): Promise<BunnyVideo> {
-  const res = await fetch(bunnyUrl(libraryId, `/videos/${guid}`), {
+  const res = await fetch(bunnyUrl(libraryId, `/videos/${encodeURIComponent(guid)}`), {
     headers: { AccessKey: apiKey },
   });
   if (!res.ok) {
@@ -98,7 +98,7 @@ export async function deleteVideo(
   apiKey: string,
   guid: string,
 ): Promise<void> {
-  const res = await fetch(bunnyUrl(libraryId, `/videos/${guid}`), {
+  const res = await fetch(bunnyUrl(libraryId, `/videos/${encodeURIComponent(guid)}`), {
     method: 'DELETE',
     headers: { AccessKey: apiKey },
   });

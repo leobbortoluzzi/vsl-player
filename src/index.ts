@@ -30,6 +30,13 @@ interface StoredVideo {
   createdAt: string;
 }
 
+const VIDEO_ID_PATTERN = /^[a-zA-Z0-9-]+$/;
+
+const DEFAULT_RESPONSE_HEADERS = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+};
+
 function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -41,28 +48,64 @@ function corsHeaders(): Record<string, string> {
 function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(), ...extraHeaders },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...DEFAULT_RESPONSE_HEADERS, ...corsHeaders(), ...extraHeaders },
   });
 }
 
 function html(body: string, extraHeaders: Record<string, string> = {}): Response {
   return new Response(body, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', ...extraHeaders },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', ...DEFAULT_RESPONSE_HEADERS, ...extraHeaders },
   });
 }
 
 function js(code: string): Response {
   return new Response(code, {
-    headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', ...corsHeaders() },
+    headers: { 'Content-Type': 'application/javascript; charset=utf-8', ...DEFAULT_RESPONSE_HEADERS, ...corsHeaders() },
   });
 }
 
 function redirect(url: string, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(null, { status: 302, headers: { Location: url, ...extraHeaders } });
+  return new Response(null, { status: 302, headers: { Location: url, ...DEFAULT_RESPONSE_HEADERS, ...extraHeaders } });
 }
 
 function errorJson(message: string, status = 400, extraHeaders: Record<string, string> = {}): Response {
   return json({ error: message }, status, extraHeaders);
+}
+
+function isSecureRequest(request: Request): boolean {
+  return new URL(request.url).protocol === 'https:';
+}
+
+async function readJsonBody<T>(request: Request): Promise<T | null> {
+  try {
+    return await request.json() as T;
+  } catch {
+    return null;
+  }
+}
+
+function isValidVideoId(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 128 && VIDEO_ID_PATTERN.test(value);
+}
+
+function normalizeAnalyticsSegments(value: unknown): Array<[number, number]> | null {
+  if (!Array.isArray(value)) return null;
+
+  const segments: Array<[number, number]> = [];
+  for (const segment of value) {
+    if (!Array.isArray(segment) || segment.length !== 2) return null;
+
+    const start = Number(segment[0]);
+    const end = Number(segment[1]);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < 0 || end <= start) {
+      return null;
+    }
+
+    segments.push([Math.floor(start), Math.floor(end)]);
+  }
+
+  return segments;
 }
 
 interface Route {
@@ -83,7 +126,7 @@ const routes: Route[] = [
 
   // Protected
   { method: 'GET',  pattern: /^\/$/,                        handler: handleAdmin,       authRequired: true },
-  { method: 'POST', pattern: /^\/api\/auth\/logout\/?$/,    handler: handleAuthLogout,  authRequired: true },
+  { method: 'POST', pattern: /^\/api\/auth\/logout\/?$/,    handler: handleAuthLogout,  authRequired: false },
   { method: 'GET',  pattern: /^\/api\/auth\/me\/?$/,        handler: handleAuthMe,      authRequired: true },
   { method: 'GET',  pattern: /^\/api\/videos\/?$/,          handler: handleListVideos,  authRequired: true },
   { method: 'POST', pattern: /^\/api\/videos\/create\/?$/,  handler: handleVideoCreate, authRequired: true },
@@ -145,8 +188,8 @@ async function handleAuthSetup(req: Request, env: Env, _match: RegExpMatchArray)
   if (alreadySet) {
     return errorJson('Senha já foi definida', 400);
   }
-  const body = await req.json() as { password?: string };
-  if (!body.password || typeof body.password !== 'string') {
+  const body = await readJsonBody<{ password?: unknown }>(req);
+  if (!body || typeof body.password !== 'string') {
     return errorJson('Senha é obrigatória');
   }
   try {
@@ -155,12 +198,12 @@ async function handleAuthSetup(req: Request, env: Env, _match: RegExpMatchArray)
     return errorJson(err instanceof Error ? err.message : 'Erro ao definir senha', 400);
   }
   const token = await createSession(env.VSL_KV);
-  return json({ success: true }, 200, { 'Set-Cookie': makeSessionCookie(token) });
+  return json({ success: true }, 200, { 'Set-Cookie': makeSessionCookie(token, isSecureRequest(req)) });
 }
 
 async function handleAuthLogin(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
-  const body = await req.json() as { password?: string };
-  if (!body.password || typeof body.password !== 'string') {
+  const body = await readJsonBody<{ password?: unknown }>(req);
+  if (!body || typeof body.password !== 'string') {
     return errorJson('Senha é obrigatória');
   }
   const valid = await verifyPassword(env.VSL_KV, body.password);
@@ -168,13 +211,13 @@ async function handleAuthLogin(req: Request, env: Env, _match: RegExpMatchArray)
     return errorJson('Senha incorreta', 401);
   }
   const token = await createSession(env.VSL_KV);
-  return json({ success: true }, 200, { 'Set-Cookie': makeSessionCookie(token) });
+  return json({ success: true }, 200, { 'Set-Cookie': makeSessionCookie(token, isSecureRequest(req)) });
 }
 
 async function handleAuthLogout(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
   const token = getSessionFromCookie(req);
   if (token) await destroySession(env.VSL_KV, token);
-  return json({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+  return json({ success: true }, 200, { 'Set-Cookie': clearSessionCookie(isSecureRequest(req)) });
 }
 
 async function handleAuthMe(_req: Request, _env: Env, _match: RegExpMatchArray): Promise<Response> {
@@ -245,12 +288,13 @@ async function handleEmbedJs(_req: Request, env: Env, match: RegExpMatchArray): 
 // ─── Video API handlers ────────────────────────────────────
 
 async function handleVideoCreate(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
-  const body = await req.json() as { title?: string };
-  if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
+  const body = await readJsonBody<{ title?: unknown }>(req);
+  if (!body || typeof body.title !== 'string' || !body.title.trim()) {
     return errorJson('Título é obrigatório');
   }
 
-  const created = await createVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, body.title.trim());
+  const title = body.title.trim();
+  const created = await createVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, title);
   const videoId = crypto.randomUUID();
 
   return json({
@@ -258,28 +302,30 @@ async function handleVideoCreate(req: Request, env: Env, _match: RegExpMatchArra
     bunnyGuid: created.guid,
     libraryId: env.BUNNY_LIBRARY_ID,
     accessKey: env.BUNNY_API_KEY,
+    title,
   });
 }
 
 async function handleVideoConfirm(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
-  const body = await req.json() as { id?: string; bunnyGuid?: string };
-  if (!body.id || typeof body.id !== 'string') {
+  const body = await readJsonBody<{ id?: unknown; bunnyGuid?: unknown; title?: unknown }>(req);
+  if (!body || !isValidVideoId(body.id)) {
     return errorJson('ID do vídeo é obrigatório');
   }
   if (!body.bunnyGuid || typeof body.bunnyGuid !== 'string') {
     return errorJson('Bunny GUID é obrigatório');
   }
 
+  const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : body.id;
   const stored: StoredVideo = {
     id: body.id,
     bunnyGuid: body.bunnyGuid,
-    title: body.id,
+    title,
     createdAt: new Date().toISOString(),
   };
 
   try {
     const video = await getVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, body.bunnyGuid);
-    stored.title = video.title || body.id;
+    stored.title = video.title || title;
   } catch {
     // Bunny might still be processing; save with fallback title
   }
@@ -299,6 +345,7 @@ async function handleListVideos(_req: Request, env: Env, _match: RegExpMatchArra
       const entry: StoredVideo & { status?: number; length?: number } = { ...stored };
       try {
         const live = await getVideo(env.BUNNY_LIBRARY_ID, env.BUNNY_API_KEY, stored.bunnyGuid);
+        entry.title = live.title || stored.title;
         entry.status = live.status;
         entry.length = live.length;
       } catch {
@@ -340,19 +387,27 @@ interface AnalyticsPayload {
 }
 
 async function handleAnalyticsTrack(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
-  let payload: AnalyticsPayload;
-  try {
-    payload = await req.json() as AnalyticsPayload;
-  } catch {
+  const payload = await readJsonBody<Partial<AnalyticsPayload>>(req);
+  if (!payload || !isValidVideoId(payload.videoId)) {
     return errorJson('Invalid JSON');
   }
 
-  if (!payload.videoId || !payload.segments || !Array.isArray(payload.segments)) {
+  const stored = await env.VSL_KV.get<StoredVideo>(`video:${payload.videoId}`, 'json');
+  if (!stored) {
+    return errorJson('Video not found', 404);
+  }
+
+  const segments = normalizeAnalyticsSegments(payload.segments);
+  if (!segments || segments.length === 0) {
     return errorJson('Missing fields');
   }
 
+  const videoLength = typeof payload.videoLength === 'number' && Number.isFinite(payload.videoLength) && payload.videoLength >= 0
+    ? payload.videoLength
+    : 0;
+
   try {
-    await trackAnalytics(env.VSL_DB, payload.videoId, payload.segments, payload.videoLength);
+    await trackAnalytics(env.VSL_DB, payload.videoId, segments, videoLength);
   } catch (err) {
     console.error('Analytics write error:', err);
   }
