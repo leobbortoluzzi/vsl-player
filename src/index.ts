@@ -87,6 +87,8 @@ const routes: Route[] = [
   { method: 'POST', pattern: /^\/api\/videos\/create\/?$/,  handler: handleVideoCreate, authRequired: true },
   { method: 'POST', pattern: /^\/api\/videos\/confirm\/?$/, handler: handleVideoConfirm,authRequired: true },
   { method: 'DELETE', pattern: /^\/api\/videos\/([a-zA-Z0-9-]+)$/, handler: handleDelete, authRequired: true },
+  { method: 'POST', pattern: /^\/api\/analytics\/track\/?$/,      handler: handleAnalyticsTrack, authRequired: false },
+  { method: 'GET',  pattern: /^\/api\/analytics\/([a-zA-Z0-9-]+)$/, handler: handleAnalyticsGet, authRequired: true },
 ];
 
 export default {
@@ -200,6 +202,7 @@ async function handlePlayer(_req: Request, env: Env, match: RegExpMatchArray): P
 
     return html(playerPage({
       title: video.title || stored.title,
+      videoId: stored.id,
       playUrl: getPlayUrl(env.BUNNY_LIBRARY_ID, stored.bunnyGuid),
       thumbnailUrl: video.thumbnailFileName
         ? getThumbnailUrl(env.BUNNY_LIBRARY_ID, stored.bunnyGuid)
@@ -231,6 +234,7 @@ async function handleEmbedJs(_req: Request, env: Env, match: RegExpMatchArray): 
 
   return js(embedScript({
     title: stored.title,
+    videoId: stored.id,
     libraryId: env.BUNNY_LIBRARY_ID,
     bunnyGuid: stored.bunnyGuid,
   }));
@@ -323,6 +327,113 @@ async function handleDelete(_req: Request, env: Env, match: RegExpMatchArray): P
   await env.VSL_KV.delete(`video:${videoId}`);
 
   return json({ success: true });
+}
+
+// ─── Analytics handlers ────────────────────────────────────
+
+interface AnalyticsPayload {
+  videoId: string;
+  segments: Array<[number, number]>;
+  videoLength: number;
+}
+
+interface VideoAnalytics {
+  totalSessions: number;
+  totalWatchSeconds: number;
+  totalDurationAvailable: number;
+  heatmap: Record<number, number>;
+  updatedAt: string;
+}
+
+async function handleAnalyticsTrack(req: Request, env: Env, _match: RegExpMatchArray): Promise<Response> {
+  let payload: AnalyticsPayload;
+  try {
+    payload = await req.json() as AnalyticsPayload;
+  } catch {
+    return errorJson('Invalid JSON');
+  }
+
+  if (!payload.videoId || !payload.segments || !Array.isArray(payload.segments)) {
+    return errorJson('Missing fields');
+  }
+
+  // Read existing analytics
+  const raw = await env.VSL_KV.get(`analytics:${payload.videoId}`);
+  let analytics: VideoAnalytics;
+  if (raw) {
+    try {
+      analytics = JSON.parse(raw);
+    } catch {
+      analytics = emptyAnalytics();
+    }
+  } else {
+    analytics = emptyAnalytics();
+  }
+
+  // Calculate watch time from segments
+  let watchSeconds = 0;
+  let maxTime = 0;
+  for (const seg of payload.segments) {
+    if (seg.length === 2) {
+      const dur = seg[1] - seg[0];
+      if (dur > 0) watchSeconds += dur;
+      if (seg[1] > maxTime) maxTime = seg[1];
+    }
+  }
+
+  analytics.totalSessions++;
+  analytics.totalWatchSeconds += watchSeconds;
+  analytics.totalDurationAvailable += payload.videoLength || maxTime || watchSeconds;
+  analytics.updatedAt = new Date().toISOString();
+
+  // Update heatmap (5-second buckets)
+  for (const seg of payload.segments) {
+    if (seg.length !== 2) continue;
+    const startBucket = Math.floor(seg[0] / 5);
+    const endBucket = Math.floor(seg[1] / 5);
+    for (let b = startBucket; b <= endBucket; b++) {
+      analytics.heatmap[b] = (analytics.heatmap[b] || 0) + 1;
+    }
+  }
+
+  // Trim heatmap to prevent KV bloat
+  const keys = Object.keys(analytics.heatmap).map(Number);
+  if (keys.length > 2000) {
+    const sorted = keys.sort((a, b) => a - b);
+    const cutoff = sorted[2000];
+    const trimmed: Record<number, number> = {};
+    for (const k of sorted) {
+      if (k <= cutoff) trimmed[k] = analytics.heatmap[k];
+    }
+    analytics.heatmap = trimmed;
+  }
+
+  try {
+    await env.VSL_KV.put(`analytics:${payload.videoId}`, JSON.stringify(analytics));
+  } catch (err) {
+    console.error('Failed to write analytics:', err);
+  }
+
+  return json({ success: true });
+}
+
+async function handleAnalyticsGet(_req: Request, env: Env, match: RegExpMatchArray): Promise<Response> {
+  const videoId = match[1];
+  const raw = await env.VSL_KV.get(`analytics:${videoId}`);
+  if (!raw) {
+    return json({ totalSessions: 0, totalWatchSeconds: 0, totalDurationAvailable: 0, heatmap: {} });
+  }
+  return json(JSON.parse(raw));
+}
+
+function emptyAnalytics(): VideoAnalytics {
+  return {
+    totalSessions: 0,
+    totalWatchSeconds: 0,
+    totalDurationAvailable: 0,
+    heatmap: {},
+    updatedAt: '',
+  };
 }
 
 // ─── HTML helpers ──────────────────────────────────────────

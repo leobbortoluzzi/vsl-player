@@ -1,11 +1,12 @@
 export interface PlayerData {
   title: string;
+  videoId: string;
   playUrl: string;
   thumbnailUrl: string;
 }
 
 export function playerPage(data: PlayerData): string {
-  const { title, playUrl, thumbnailUrl } = data;
+  const { title, videoId, playUrl, thumbnailUrl } = data;
 
   return `<!DOCTYPE html>
 <html lang="pt">
@@ -45,6 +46,7 @@ export function playerPage(data: PlayerData): string {
   var playBtn = document.getElementById('playBtn');
   var loader = document.getElementById('loader');
   var playUrl = ${JSON.stringify(playUrl)};
+  var videoId = ${JSON.stringify(videoId)};
   var HlsCtor = window.Hls;
 
   function emit(name, detail) {
@@ -63,13 +65,47 @@ export function playerPage(data: PlayerData): string {
   function onTimeUpdate() { emit('player:timeupdate', { time: video.currentTime }); }
   function onReady() { emit('player:ready', { player: video }); }
 
+  // ── Analytics tracking ──────────────────────
+  var analytics = { segmentStart: -1, segments: [], videoLength: 0, videoId: videoId, sent: false };
+
+  function pushSegment() {
+    if (analytics.segmentStart >= 0 && video.currentTime > analytics.segmentStart + 1) {
+      analytics.segments.push([Math.floor(analytics.segmentStart), Math.floor(video.currentTime)]);
+    }
+    analytics.segmentStart = -1;
+  }
+
+  function trackPlay() {
+    analytics.segmentStart = video.currentTime;
+    if (!analytics.videoLength && video.duration) {
+      analytics.videoLength = Math.floor(video.duration);
+    }
+  }
+
+  function trackPause() { pushSegment(); }
+
+  function sendAnalytics() {
+    if (analytics.sent || analytics.segments.length === 0) return;
+    analytics.sent = true;
+    pushSegment();
+    var payload = JSON.stringify({
+      videoId: analytics.videoId,
+      segments: analytics.segments,
+      videoLength: analytics.videoLength
+    });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/analytics/track', payload);
+    }
+  }
+
   function setupListeners() {
-    video.addEventListener('play', onPlay);
+    video.addEventListener('play', function() { trackPlay(); onPlay(); });
     video.addEventListener('playing', function() { emit('player:playing', {}); hidePoster(); });
-    video.addEventListener('pause', onPause);
-    video.addEventListener('ended', onEnded);
+    video.addEventListener('pause', function() { trackPause(); onPause(); });
+    video.addEventListener('ended', function() { trackPause(); sendAnalytics(); onEnded(); });
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    window.addEventListener('beforeunload', sendAnalytics);
     hideLoader();
     onReady();
   }

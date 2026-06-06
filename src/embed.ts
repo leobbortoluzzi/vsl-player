@@ -2,17 +2,19 @@ import { getPlayUrl, getThumbnailUrl } from './bunny';
 
 export interface EmbedData {
   title: string;
+  videoId: string;
   libraryId: string;
   bunnyGuid: string;
 }
 
 export function embedScript(data: EmbedData): string {
-  const { title, libraryId, bunnyGuid } = data;
+  const { title, videoId, libraryId, bunnyGuid } = data;
   const playUrl = getPlayUrl(libraryId, bunnyGuid);
   const thumbnailUrl = getThumbnailUrl(libraryId, bunnyGuid);
 
   return `(function() {
   var VSL = {
+    videoId: ${JSON.stringify(videoId)},
     title: ${JSON.stringify(title)},
     playUrl: ${JSON.stringify(playUrl)},
     thumbnailUrl: ${JSON.stringify(thumbnailUrl)},
@@ -74,11 +76,46 @@ export function embedScript(data: EmbedData): string {
   function hidePoster() { poster.classList.add('hidden'); }
   function hideLoader() { loader.classList.remove('active'); }
 
-  video.addEventListener('play', function() { emit('player:play', {}); hidePoster(); });
+  // ── Analytics tracking ──────────────────────
+  var analytics = { segmentStart: -1, segments: [], videoLength: 0, videoId: VSL.videoId, sent: false };
+
+  function pushSegment() {
+    if (analytics.segmentStart >= 0 && video.currentTime > analytics.segmentStart + 1) {
+      analytics.segments.push([Math.floor(analytics.segmentStart), Math.floor(video.currentTime)]);
+    }
+    analytics.segmentStart = -1;
+  }
+
+  function trackPlay() {
+    analytics.segmentStart = video.currentTime;
+    if (!analytics.videoLength && video.duration) {
+      analytics.videoLength = Math.floor(video.duration);
+    }
+  }
+
+  function trackPause() { pushSegment(); }
+
+  function sendAnalytics() {
+    if (analytics.sent || analytics.segments.length === 0) return;
+    analytics.sent = true;
+    pushSegment();
+    var payload = JSON.stringify({
+      videoId: analytics.videoId,
+      segments: analytics.segments,
+      videoLength: analytics.videoLength
+    });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/analytics/track', payload);
+    }
+  }
+
+  video.addEventListener('play', function() { trackPlay(); emit('player:play', {}); hidePoster(); });
   video.addEventListener('playing', function() { emit('player:playing', {}); hidePoster(); });
-  video.addEventListener('pause', function() { emit('player:pause', {}); });
-  video.addEventListener('ended', function() { emit('player:ended', {}); });
+  video.addEventListener('pause', function() { trackPause(); emit('player:pause', {}); });
+  video.addEventListener('ended', function() { trackPause(); sendAnalytics(); emit('player:ended', {}); });
   video.addEventListener('timeupdate', function() { emit('player:timeupdate', { time: video.currentTime }); });
+  window.addEventListener('beforeunload', sendAnalytics);
+  // ────────────────────────────────────────────
 
   playBtn.addEventListener('click', function(e) { e.stopPropagation(); video.play().catch(function(){}); });
   poster.addEventListener('click', function() { video.play().catch(function(){}); });

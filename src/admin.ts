@@ -75,6 +75,24 @@ export function adminPage(): string {
 
   .toast { position: fixed; bottom: 24px; right: 24px; background: #238636; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 100; }
   .toast.show { opacity: 1; transform: translateY(0); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; width: 90%; max-width: 640px; max-height: 80vh; overflow-y: auto; }
+  .modal h2 { font-size: 16px; color: #f0f6fc; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+  .modal-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+  .modal-close:hover { color: #f0f6fc; background: #21262d; }
+  .analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .analytics-card { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 14px; text-align: center; }
+  .analytics-card .val { font-size: 24px; font-weight: 700; color: #58a6ff; }
+  .analytics-card .lbl { font-size: 11px; color: #8b949e; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .heatmap-wrap { margin-top: 16px; }
+  .heatmap-wrap h3 { font-size: 13px; color: #f0f6fc; margin-bottom: 8px; }
+  .heatmap-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+  .heatmap-label { font-size: 10px; color: #8b949e; width: 48px; text-align: right; flex-shrink: 0; }
+  .heatmap-bar-bg { flex: 1; height: 14px; background: #21262d; border-radius: 3px; overflow: hidden; }
+  .heatmap-bar { height: 100%; background: #1f6feb; border-radius: 3px; min-width: 2px; }
+  .analytics-empty { text-align: center; color: #484f58; padding: 24px; }
 </style>
 </head>
 <body>
@@ -113,6 +131,10 @@ export function adminPage(): string {
 </div>
 
 <div class="toast" id="toast">Link copiado!</div>
+
+<div class="modal-overlay" id="analyticsModalOverlay">
+  <div class="modal" id="analyticsModal"></div>
+</div>
 
 <script>
 (function() {
@@ -328,6 +350,7 @@ export function adminPage(): string {
             '<div class="actions">' +
               '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(scriptTag) + '\\')">Script</button>' +
               '<button class="btn btn-copy" onclick="copyText(\\'' + escAttr(embedUrl) + '\\')">Iframe</button>' +
+              '<button class="btn btn-copy" onclick="showAnalytics(\\'' + v.id + '\\')">Analytics</button>' +
               '<button class="btn btn-danger" onclick="delVideo(\\'' + v.id + '\\')">Remover</button>' +
             '</div>' +
           '</div>';
@@ -340,6 +363,75 @@ export function adminPage(): string {
 
   window.copyText = copyToClipboard;
   window.delVideo = deleteVideo;
+
+  // --- Analytics ---
+  var analyticsModal = document.getElementById('analyticsModal');
+  var analyticsOverlay = document.getElementById('analyticsModalOverlay');
+
+  analyticsOverlay.addEventListener('click', function(e) {
+    if (e.target === analyticsOverlay) closeAnalytics();
+  });
+
+  window.showAnalytics = function(videoId) {
+    analyticsModal.innerHTML = '<div style="text-align:center;color:#8b949e;padding:24px;">Carregando...</div>';
+    analyticsOverlay.classList.add('active');
+
+    fetch('/api/analytics/' + videoId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.totalSessions) {
+          analyticsModal.innerHTML =
+            '<h2>Analytics <button class="modal-close" onclick="closeAnalytics()">&#10005;</button></h2>' +
+            '<div class="analytics-empty">Nenhuma visualização ainda.</div>';
+          return;
+        }
+
+        var avgWatch = Math.round(data.totalWatchSeconds / data.totalSessions);
+        var avgRetention = data.totalDurationAvailable > 0
+          ? Math.round((data.totalWatchSeconds / data.totalDurationAvailable) * 100)
+          : 0;
+
+        var keys = Object.keys(data.heatmap).map(Number).sort(function(a, b) { return a - b; });
+
+        var heatmapHtml = '';
+        var maxVal = 1;
+        for (var i = 0; i < keys.length; i++) {
+          if (data.heatmap[keys[i]] > maxVal) maxVal = data.heatmap[keys[i]];
+        }
+
+        for (var i = 0; i < Math.min(keys.length, 24); i++) {
+          var bucket = keys[i];
+          var sec = bucket * 5;
+          var min = Math.floor(sec / 60);
+          var s = sec % 60;
+          var label = min + ':' + (s < 10 ? '0' + s : s);
+          var pct = Math.round((data.heatmap[bucket] / maxVal) * 100);
+          heatmapHtml +=
+            '<div class="heatmap-bar-row">' +
+              '<div class="heatmap-label">' + label + '</div>' +
+              '<div class="heatmap-bar-bg"><div class="heatmap-bar" style="width:' + pct + '%"></div></div>' +
+            '</div>';
+        }
+
+        analyticsModal.innerHTML =
+          '<h2>Analytics <button class="modal-close" onclick="closeAnalytics()">&#10005;</button></h2>' +
+          '<div class="analytics-grid">' +
+            '<div class="analytics-card"><div class="val">' + data.totalSessions + '</div><div class="lbl">Views</div></div>' +
+            '<div class="analytics-card"><div class="val">' + formatTime(avgWatch) + '</div><div class="lbl">Média assistida</div></div>' +
+            '<div class="analytics-card"><div class="val">' + avgRetention + '%</div><div class="lbl">Retenção</div></div>' +
+          '</div>' +
+          (heatmapHtml ? '<div class="heatmap-wrap"><h3>Retenção por trecho (5s)</h3>' + heatmapHtml + '</div>' : '');
+      })
+      .catch(function() {
+        analyticsModal.innerHTML =
+          '<h2>Analytics <button class="modal-close" onclick="closeAnalytics()">&#10005;</button></h2>' +
+          '<div class="analytics-empty">Erro ao carregar analytics.</div>';
+      });
+  };
+
+  window.closeAnalytics = function() {
+    analyticsOverlay.classList.remove('active');
+  };
 
   // Start
   checkAuth();
